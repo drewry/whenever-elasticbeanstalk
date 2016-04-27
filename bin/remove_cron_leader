@@ -29,15 +29,35 @@ else
 	env_name
 end
 
-leader_instances = ec2.instances.to_a.inject([]) do |m, i|
-	m << i.id if i.tags["elasticbeanstalk:environment-name"] == environment_name &&
-		i.status == :running &&
-		i.tags["leader"] == "true"
-	m
+leader_instances = []
+ec2.instances.each do |i|
+  if i.state.name == "running"
+    is_environment = false
+    is_leader      = false
+
+    # iterate through the tags
+    i.tags.each do |tag|
+      if tag.key == "elasticbeanstalk:environment-name" and tag.value == environment_name
+        is_environment = true
+      end
+      if tag.key == "leader" and tag.value == "true"
+        is_leader = true
+      end
+    end
+
+    leader_instances << i.id if is_environment and is_leader
+  end
 end
 
 if leader_instances.count > 1 && leader_instances.include?(instance_id)
-	ec2.instances[instance_id].tags["leader"] = "false"
+  ec2.instances(instance_ids: [instance_id]).first.create_tags({
+    tags: [
+      {
+        key: "leader",
+        value: "false"
+      }
+    ]
+  })
 end
 
 `/usr/local/bin/bundle exec setup_cron`
